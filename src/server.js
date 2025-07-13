@@ -28,19 +28,46 @@ connectDB();
 app.use(helmet());
 
 // CORS configuration
-app.use(cors({
-  origin: '*',
+const corsOptions = {
+  origin: function (origin, callback) {
+    // Allow requests with no origin (like mobile apps or curl requests)
+    if (!origin) return callback(null, true);
+
+    const allowedOrigins = [
+      'http://localhost:3000',
+      'http://localhost:5173',
+      'https://check-maid-frontend.vercel.app',
+      'http://checkmaid.us',
+      'https://www.checkmaid.us',
+    ];
+
+    // Add FRONTEND_URL from environment if it exists
+    if (process.env.FRONTEND_URL) {
+      allowedOrigins.push(process.env.FRONTEND_URL);
+    }
+
+    if (allowedOrigins.indexOf(origin) !== -1) {
+      callback(null, true);
+    } else {
+      console.log(`CORS blocked origin: ${origin}`);
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization']
-}));
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept', 'Origin'],
+  exposedHeaders: ['Content-Length', 'X-Foo', 'X-Bar'],
+  maxAge: 86400, // 24 hours
+};
+
+app.use(cors(corsOptions));
 
 // Rate limiting
 const limiter = rateLimit({
   windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS) || 15 * 60 * 1000, // 15 minutes
   max: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS) || 100, // limit each IP to 100 requests per windowMs
   message: {
-    error: 'Too many requests from this IP, please try again later.'
+    error: 'Too many requests from this IP, please try again later.',
   },
   standardHeaders: true,
   legacyHeaders: false,
@@ -69,9 +96,11 @@ app.get('/health', (req, res) => {
     message: 'Server is running',
     timestamp: new Date().toISOString(),
     environment: process.env.NODE_ENV,
-    version: process.env.API_VERSION || 'v1'
+    version: process.env.API_VERSION || 'v1',
   });
 });
+
+// API documentation endpoint
 
 // API routes
 const apiVersion = process.env.API_VERSION || 'v1';
@@ -89,7 +118,7 @@ app.get('/', (req, res) => {
     message: 'Welcome to Cleaning Service API',
     version: apiVersion,
     documentation: `/api/${apiVersion}/docs`,
-    health: '/health'
+    health: '/health',
   });
 });
 
@@ -114,7 +143,7 @@ process.on('unhandledRejection', (err, promise) => {
 });
 
 // Handle uncaught exceptions
-process.on('uncaughtException', (err) => {
+process.on('uncaughtException', err => {
   console.log(`❌ Uncaught Exception: ${err.message}`);
   process.exit(1);
 });
